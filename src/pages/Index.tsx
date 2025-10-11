@@ -23,20 +23,53 @@ const Index = () => {
   };
 
   const handleSendMessage = async (message: string) => {
-    setChatMessages((prev) => [...prev, { role: "user", content: message }]);
+    const userMessage = { role: "user", content: message };
+    setChatMessages((prev) => [...prev, userMessage]);
     
-    // Simulate AI response (in production, this would call the Gemini API)
     toast.info("Processing your health query...");
     
-    setTimeout(() => {
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/health-chat`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          },
+          body: JSON.stringify({
+            messages: [...chatMessages, userMessage],
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
       setChatMessages((prev) => [
         ...prev,
         {
           role: "assistant",
-          content: `I understand you're asking about "${message}". This is a placeholder response. In production, this would connect to the Gemini API to provide accurate health information.`,
+          content: data.reply || "I apologize, but I couldn't generate a response.",
         },
       ]);
-    }, 1000);
+      
+      toast.success("Response received!");
+    } catch (error) {
+      console.error('Error calling health-chat:', error);
+      toast.error("Failed to get response. Please try again.");
+      
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "I apologize, but I'm having trouble connecting right now. Please try again in a moment.",
+        },
+      ]);
+    }
   };
 
   return (
