@@ -16,55 +16,75 @@ serve(async (req) => {
     const { messages } = await req.json();
     console.log('Received messages:', messages);
 
-    const googleApiKey = Deno.env.get('GOOGLE_API_KEY');
-    if (!googleApiKey) {
-      throw new Error('GOOGLE_API_KEY is not configured');
+    const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
+    if (!lovableApiKey) {
+      throw new Error('LOVABLE_API_KEY is not configured');
     }
 
-    // Prepare the request for Google Gemini API
-    const contents = messages.map((msg: any) => ({
-      role: msg.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: msg.content }]
-    }));
+    // Prepare messages with system prompt
+    const aiMessages = [
+      {
+        role: 'system',
+        content: 'You are an Advanced AI Health Prevention Assistant. Provide accurate, helpful health information about disease prevention, symptoms management, and healthy lifestyle recommendations. Always remind users to consult healthcare professionals for medical advice. Keep responses clear, concise, and supportive.'
+      },
+      ...messages
+    ];
 
-    // Add system prompt as first message
-    contents.unshift({
-      role: 'user',
-      parts: [{ 
-        text: 'You are an Advanced AI Health Prevention Assistant. Provide accurate, helpful health information about disease prevention, symptoms management, and healthy lifestyle recommendations. Always remind users to consult healthcare professionals for medical advice. Keep responses clear, concise, and supportive.' 
-      }]
-    });
-
-    console.log('Calling Gemini API...');
+    console.log('Calling Lovable AI Gateway...');
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${googleApiKey}`,
+      'https://ai.gateway.lovable.dev/v1/chat/completions',
       {
         method: 'POST',
         headers: {
+          'Authorization': `Bearer ${lovableApiKey}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          contents,
-          generationConfig: {
-            temperature: 0.7,
-            topK: 40,
-            topP: 0.95,
-            maxOutputTokens: 1024,
-          },
+          model: 'google/gemini-2.5-flash',
+          messages: aiMessages,
+          temperature: 0.7,
+          max_tokens: 1024,
         }),
       }
     );
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Gemini API error:', response.status, errorText);
-      throw new Error(`Gemini API error: ${response.status} - ${errorText}`);
+      console.error('Lovable AI Gateway error:', response.status, errorText);
+      
+      if (response.status === 429) {
+        return new Response(
+          JSON.stringify({ 
+            error: 'Rate limit exceeded. Please try again in a moment.',
+            reply: 'I apologize, but I\'m receiving too many requests right now. Please try again in a moment.'
+          }),
+          {
+            status: 429,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          }
+        );
+      }
+      
+      if (response.status === 402) {
+        return new Response(
+          JSON.stringify({ 
+            error: 'Payment required. Please add credits to your Lovable workspace.',
+            reply: 'I apologize, but the AI service needs additional credits. Please contact support.'
+          }),
+          {
+            status: 402,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          }
+        );
+      }
+      
+      throw new Error(`AI Gateway error: ${response.status} - ${errorText}`);
     }
 
     const data = await response.json();
-    console.log('Gemini API response received');
+    console.log('Lovable AI response received');
 
-    const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text || 'Sorry, I could not generate a response.';
+    const generatedText = data.choices?.[0]?.message?.content || 'Sorry, I could not generate a response.';
 
     return new Response(
       JSON.stringify({ reply: generatedText }),
